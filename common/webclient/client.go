@@ -34,11 +34,11 @@ func Web_Form_POST(url_add string,data url.Values)string{
 func HttpGet(url_add string) string{
 	resp, err := http.Get(url_add)
 	if err != nil {
+		fmt.Println(err)
 		// handle error
 	}
-
-	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
 	if err != nil {
 		// handle error
 	}

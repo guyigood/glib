@@ -13,14 +13,15 @@ import (
 var mysqldb *sql.DB
 
 type Db_conn struct {
-	db_host     string
-	db_port     string
-	db_name     string
-	db_password string
-
+	Db_host     string
+	Db_port     string
+	Db_name     string
+	Db_password string
+	Db_perfix   string
 }
 
 var Db_perfix string
+var Db_Struct Db_conn
 //var DataTable map[string]string
 
 func init() {
@@ -36,6 +37,11 @@ func init() {
 	mysqldb.SetMaxOpenConns(maxpool)
 	mysqldb.SetMaxIdleConns(minpool)
 	mysqldb.Ping()
+	Db_Struct.Db_perfix=data["db_perfix"]
+	Db_Struct.Db_name=data["db_name"]
+	Db_Struct.Db_host=data["db_host"]
+	Db_Struct.Db_port=data["db_port"]
+	Db_Struct.Db_password=data["db_password"]
 	Db_perfix=data["db_perfix"]
 }
 
