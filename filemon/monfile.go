@@ -11,136 +11,142 @@ import (
 	"github.com/howeyc/fsnotify"
 )
 
-const (
-	filePath   = "/home/ubuntu/GzhuOJ/public"
-	hostname   = "root@gzhuacm.cn"
-	remotePath = "/home/public"
-)
+type FileNotify struct {
+	FilePath   string
+	Host   string
+	Remote_Path string
+	Watcher *fsnotify.Watcher
+	Mutex sync.Mutex
+}
 
-var watcher *fsnotify.Watcher
-var mutex sync.Mutex
+func NewFileNotifySever()(*FileNotify){
+	this:=new(FileNotify)
+	return this
+}
 
-func Print(args ...interface{}) {
+
+
+func (this *FileNotify)Print(args ...interface{}) {
 	fmt.Println(time.Now(), args)
 }
-func isDir(path string) bool {
+func (this *FileNotify)isDir(path string) bool {
 	fileInfo, err := os.Stat(path)
 	if err != nil {
-		Print("error:", err.Error())
+		this.Print("error:", err.Error())
 		return false
 	}
 	return fileInfo.IsDir()
 }
-func watchPath(filePath string) {
-	Print("watchPath:", filePath)
-	err := watcher.Watch(filePath)
+func (this *FileNotify)watchPath(filePath string) {
+	this.Print("watchPath:", filePath)
+	err := this.Watcher.Watch(filePath)
 	if err != nil {
-		Print(err.Error())
+		this.Print(err.Error())
 		return
 	}
 }
-func broweDir(path string) {
-	Print("broweDir:", path)
+func (this *FileNotify)broweDir(path string) {
+	this.Print("broweDir:", path)
 	dir, err := os.Open(path)
 	if err != nil {
-		Print("error:", err.Error())
+		this.Print("error:", err.Error())
 		return
 	}
 	defer dir.Close()
 	names, err := dir.Readdirnames(-1)
 	if err != nil {
-		Print("error:", err.Error())
+		this.Print("error:", err.Error())
 		return
 	}
 	for _, name := range names {
 		dirPath := path + "/" + name
-		if !isDir(dirPath) {
+		if !this.isDir(dirPath) {
 			continue
 		}
-		watchPath(dirPath)
-		broweDir(dirPath)
+		this.watchPath(dirPath)
+		this.broweDir(dirPath)
 	}
 }
 
-func Run_file_sync() {
+func (this *FileNotify)Run_file_sync() {
 	var err error
-	watcher, err = fsnotify.NewWatcher()
+	this.Watcher, err = fsnotify.NewWatcher()
 	if err != nil {
 		panic(err)
 	}
-	defer watcher.Close()
-	broweDir(filePath)
-	watchPath(filePath)
-	dealWatch()
+	defer this.Watcher.Close()
+	this.broweDir(this.FilePath)
+	this.watchPath(this.FilePath)
+	this.dealWatch()
 }
-func copy(event *fsnotify.FileEvent) *exec.Cmd {
+func (this *FileNotify)copy(event *fsnotify.FileEvent) *exec.Cmd {
 	return exec.Command(
 		"scp",
 		"-r",
 		"-P 23456",
 		event.Name,
-		hostname+":"+remotePath+strings.TrimPrefix(event.Name, filePath))
+		this.Host+":"+this.Remote_Path+strings.TrimPrefix(event.Name, this.FilePath))
 }
-func remove(event *fsnotify.FileEvent) *exec.Cmd {
+func (this *FileNotify)remove(event *fsnotify.FileEvent) *exec.Cmd {
 	return exec.Command(
 		"ssh",
 		"-p 23456",
-		hostname,
-		`rm -r `+remotePath+strings.TrimPrefix(event.Name, filePath)+``)
+		this.Host,
+		`rm -r `+this.Remote_Path+strings.TrimPrefix(event.Name, this.FilePath)+``)
 }
-func dealWatch() {
+func (this *FileNotify)dealWatch() {
 	for {
 		func() {
 			//mutex.Lock()
 			//defer mutex.Unlock()
 			select {
-			case event := <-watcher.Event:
-				Print("event: ", event)
+			case event := <-this.Watcher.Event:
+				this.Print("event: ", event)
 				var cmd *exec.Cmd
 				if event.IsCreate() || event.IsModify() {
-					cmd = copy(event)
+					cmd = this.copy(event)
 				}
 				if event.IsDelete() || event.IsRename() {
-					cmd = remove(event)
+					cmd = this.remove(event)
 				}
-				Print("cmd:", cmd.Args)
+				this.Print("cmd:", cmd.Args)
 				stderr, err := cmd.StderrPipe()
 				if err != nil {
-					Print(err.Error())
+					this.Print(err.Error())
 					return
 				}
 				defer stderr.Close()
 				stdout, err := cmd.StdoutPipe()
 				if err != nil {
-					Print(err.Error())
+					this.Print(err.Error())
 					return
 				}
 				defer stdout.Close()
 				if err = cmd.Start(); err != nil {
-					Print(err.Error())
+					this.Print(err.Error())
 					return
 				}
 				errBytes, err := ioutil.ReadAll(stderr)
 				if err != nil {
-					Print(err.Error())
+					this.Print(err.Error())
 					return
 				}
 				outBytes, err := ioutil.ReadAll(stdout)
 				if err != nil {
-					Print(err.Error())
+					this.Print(err.Error())
 					return
 				}
 				if len(errBytes) != 0 {
-					Print("errors:", string(errBytes))
+					this.Print("errors:", string(errBytes))
 				}
 				if len(outBytes) != 0 {
-					Print("output:", string(outBytes))
+					this.Print("output:", string(outBytes))
 				}
 				if err = cmd.Wait(); err != nil {
-					Print(err.Error())
+					this.Print(err.Error())
 				}
-			case err := <-watcher.Error:
-				Print("error: ", err.Error())
+			case err := <-this.Watcher.Error:
+				this.Print("error: ", err.Error())
 			}
 		}()
 	}

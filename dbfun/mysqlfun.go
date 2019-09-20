@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"gylib/common"
+	"gylib/common/datatype"
 )
 
 type Mysqlcon struct {
@@ -97,43 +99,156 @@ func (this *Mysqlcon) Begin_tran(sqlstr []string) (int) {
 	return 1
 }
 
-func (this *Mysqlcon) get_insert_sql(postdata map[string]interface{}) (result string, val string) {
-	rows, _ := mysqldb.Query("SHOW full COLUMNS FROM " + this.Tablename)
-	defer rows.Close()
-	columns, _ := rows.Columns()
-	scanArgs := make([]interface{}, len(columns))
-	values := make([]interface{}, len(columns))
-	for i := range values {
-		scanArgs[i] = &values[i]
-	}
-	for rows.Next() {
-		//将行数据保存到record字典
-		record := make(map[string]string)
-		_ = rows.Scan(scanArgs...)
-		for i, col := range values {
-			if col != nil {
-				record[strings.ToLower(columns[i])] = string(col.([]byte))
+func (this *Mysqlcon) Get_key_eq_value(id string) (string) {
+	tbname:=this.Tablename
+	result := ""
+	fd_list,ok:=G_dbtables[tbname]
+	if (ok) {
+		for _, v := range fd_list.([]map[string]string) {
+			record := v
+			if (record["key"] == "PRI") {
+				result = record["field"] + "=" + this.checkstr(record["type"], id)
+				break
 			}
 		}
-		if (record["key"] == "PRI" && record["extra"] == "auto_increment") {
-			continue
-		}
+		return result
+	} else {
+		this.Update_redis(tbname)
 
-		if this.MapContains(postdata, record["field"]) == false {
-			continue
+		rows, err := mysqldb.Query("SHOW full COLUMNS FROM " + tbname)
+		//fmt.Println(rows)
+		if(err!=nil){
+			fmt.Println("SHOW full COLUMNS FROM " + tbname)
 		}
-		val_str := this.Type2str(postdata[record["field"]])
-		if result == "" {
-			result = record["field"]
-			val = this.checkstr(record["type"], val_str)
-
-		} else {
-			result += "," + record["field"]
-			val += "," + this.checkstr(record["type"], val_str)
+		defer rows.Close()
+		columns, _ := rows.Columns()
+		scanArgs := make([]interface{}, len(columns))
+		values := make([]interface{}, len(columns))
+		for i := range values {
+			scanArgs[i] = &values[i]
 		}
-
+		for rows.Next() {
+			//将行数据保存到record字典
+			record := make(map[string]string)
+			_ = rows.Scan(scanArgs...)
+			for i, col := range values {
+				if col != nil {
+					record[strings.ToLower(columns[i])] = string(col.([]byte))
+				}
+			}
+			if (record["key"] == "PRI") {
+				result = record["field"] + "=" + this.checkstr(record["type"], id)
+				break;
+			}
+		}
+		return result
 	}
-	return result, val
+}
+
+func (this *Mysqlcon) Get_key_in_value(id string) (string) {
+	result := ""
+	fd_list,ok := G_dbtables[this.Tablename]
+	if (ok) {
+		for _, v := range fd_list.([]map[string]string) {
+			record := v
+			if (record["key"] == "PRI") {
+				result = record["field"] + " in (" + this.set_in_where(record["type"], id) + ")"
+				break
+			}
+		}
+		return result
+	} else {
+		this.Update_redis(this.Tablename)
+		rows, _ := mysqldb.Query("SHOW full COLUMNS FROM " + this.Tablename)
+		defer rows.Close()
+		columns, _ := rows.Columns()
+		scanArgs := make([]interface{}, len(columns))
+		values := make([]interface{}, len(columns))
+		for i := range values {
+			scanArgs[i] = &values[i]
+		}
+		for rows.Next() {
+			//将行数据保存到record字典
+			record := make(map[string]string)
+			_ = rows.Scan(scanArgs...)
+			for i, col := range values {
+				if col != nil {
+					record[strings.ToLower(columns[i])] = string(col.([]byte))
+				}
+			}
+			if (record["key"] == "PRI") {
+				result = record["field"] + " in (" + this.set_in_where(record["type"], id) + ")"
+				break;
+			}
+		}
+		return result
+	}
+}
+
+func (this *Mysqlcon) get_insert_sql(postdata map[string]interface{}) (result string, val string) {
+
+	fd_list,ok := G_dbtables[this.Tablename]
+	if (ok) {
+		for _, v := range fd_list.([]map[string]string) {
+			record := v
+			if (record["key"] == "PRI" && record["extra"] == "auto_increment") {
+				continue
+			}
+
+			if this.MapContains(postdata, record["field"]) == false {
+				continue
+			}
+			val_str := this.Type2str(postdata[record["field"]])
+			if result == "" {
+				result = "`" + record["field"] + "`"
+				val = this.checkstr(record["type"], val_str)
+
+			} else {
+				result += ",`" + record["field"] + "`"
+				val += "," + this.checkstr(record["type"], val_str)
+			}
+
+		}
+		return result, val
+	} else {
+		this.Update_redis(this.Tablename)
+		rows, _ := mysqldb.Query("SHOW full COLUMNS FROM " + this.Tablename)
+		defer rows.Close()
+		columns, _ := rows.Columns()
+		scanArgs := make([]interface{}, len(columns))
+		values := make([]interface{}, len(columns))
+		for i := range values {
+			scanArgs[i] = &values[i]
+		}
+		for rows.Next() {
+			//将行数据保存到record字典
+			record := make(map[string]string)
+			_ = rows.Scan(scanArgs...)
+			for i, col := range values {
+				if col != nil {
+					record[strings.ToLower(columns[i])] = string(col.([]byte))
+				}
+			}
+			if (record["key"] == "PRI" && record["extra"] == "auto_increment") {
+				continue
+			}
+
+			if this.MapContains(postdata, record["field"]) == false {
+				continue
+			}
+			val_str := this.Type2str(postdata[record["field"]])
+			if result == "" {
+				result = "`" + record["field"] + "`"
+				val = this.checkstr(record["type"], val_str)
+
+			} else {
+				result += ",`" + record["field"] + "`"
+				val += "," + this.checkstr(record["type"], val_str)
+			}
+
+		}
+		return result, val
+	}
 }
 
 func (this *Mysqlcon) Type2str(val interface{}) (string) {
@@ -151,42 +266,81 @@ func (this *Mysqlcon) Type2str(val interface{}) (string) {
 	return result
 }
 
-func (this *Mysqlcon) get_update_sql(postdata map[string]interface{}) (result string) {
-	rows, _ := mysqldb.Query("SHOW full COLUMNS FROM " + this.Tablename)
-	defer rows.Close()
-	columns, _ := rows.Columns()
-	scanArgs := make([]interface{}, len(columns))
-	values := make([]interface{}, len(columns))
-	for i := range values {
-		scanArgs[i] = &values[i]
-	}
-	for rows.Next() {
-		//将行数据保存到record字典
-		record := make(map[string]string)
-		_ = rows.Scan(scanArgs...)
-		for i, col := range values {
-			if col != nil {
-				record[strings.ToLower(columns[i])] = string(col.([]byte))
+func (this *Mysqlcon) Get_fields_sql(fd_name, val_name string) (result string) {
+
+	fd_list,ok :=G_dbtables[this.Tablename]
+	if (ok) {
+		for _, v := range fd_list.([]map[string]string) {
+			record := v
+			if (fd_name == record["field"]) {
+				result = "`" + record["field"] + "`=" + this.checkstr(record["type"], val_name)
+				break
 			}
 		}
-		if (record["key"] == "PRI" && record["extra"] == "auto_increment") {
-			continue
-		}
-		if this.MapContains(postdata, record["field"]) == false {
-			continue
-		}
-		val_str := this.Type2str(postdata[record["field"]])
-
-		//if (val_str == "") {
-		//	continue
-		//}
-		if result == "" {
-			result = record["field"] + "=" + this.checkstr(record["type"], val_str)
-		} else {
-			result += "," + record["field"] + "=" + this.checkstr(record["type"], val_str)
-		}
 	}
+
 	return result
+
+}
+
+func (this *Mysqlcon) get_update_sql(postdata map[string]interface{}) (result string) {
+
+	fd_list,ok := G_dbtables[this.Tablename]
+	if (ok) {
+		for _, v := range fd_list.([]map[string]string) {
+			record := v
+			if (record["key"] == "PRI" && record["extra"] == "auto_increment") {
+				continue
+			}
+			if this.MapContains(postdata, record["field"]) == false {
+				continue
+			}
+			val_str := this.Type2str(postdata[record["field"]])
+			if result == "" {
+				result = "`" + record["field"] + "`=" + this.checkstr(record["type"], val_str)
+			} else {
+				result += ",`" + record["field"]+ "`=" + this.checkstr(record["type"], val_str)
+			}
+		}
+		return result
+	} else {
+		this.Update_redis(this.Tablename)
+		rows, _ := mysqldb.Query("SHOW full COLUMNS FROM " + this.Tablename)
+		defer rows.Close()
+		columns, _ := rows.Columns()
+		scanArgs := make([]interface{}, len(columns))
+		values := make([]interface{}, len(columns))
+		for i := range values {
+			scanArgs[i] = &values[i]
+		}
+		for rows.Next() {
+			//将行数据保存到record字典
+			record := make(map[string]string)
+			_ = rows.Scan(scanArgs...)
+			for i, col := range values {
+				if col != nil {
+					record[strings.ToLower(columns[i])] = string(col.([]byte))
+				}
+			}
+			if (record["key"] == "PRI" && record["extra"] == "auto_increment") {
+				continue
+			}
+			if this.MapContains(postdata, record["field"]) == false {
+				continue
+			}
+			val_str := this.Type2str(postdata[record["field"]])
+
+			//if (val_str == "") {
+			//	continue
+			//}
+			if result == "" {
+				result = "`" + record["field"] + "`=" + this.checkstr(record["type"], val_str)
+			} else {
+				result += ",`" + record["field"] + "`=" + this.checkstr(record["type"], val_str)
+			}
+		}
+		return result
+	}
 }
 
 func (this *Mysqlcon) checkstr(fdtype string, fdvalue string) (string) {
@@ -200,7 +354,34 @@ func (this *Mysqlcon) checkstr(fdtype string, fdvalue string) (string) {
 		strings.Contains(fdtype, "decimal")) {
 		return fdvalue
 	} else {
+		//result :=strings.Replace(fdvalue, "\\", "\\\\", -1)
+		//result = "'" + strings.Replace(result, "'", "\\'", -1) + "'"
 		result := "'" + strings.Replace(fdvalue, "'", "\\'", -1) + "'"
+		return result
+	}
+
+}
+
+func (this *Mysqlcon) set_in_where(fdtype string, fdvalue string) (string) {
+	if (fdvalue == "") {
+		return "null"
+	}
+	if (strings.Contains(fdtype, "tinyint") ||
+		strings.Contains(fdtype, "double") ||
+		strings.Contains(fdtype, "float") ||
+		strings.Contains(fdtype, "int") ||
+		strings.Contains(fdtype, "decimal")) {
+		return fdvalue
+	} else {
+		arr := strings.Split(fdvalue, ",")
+		result := ""
+		for _, v := range arr {
+			if (result == "") {
+				result = "'" + strings.Replace(v, "'", "\\'", -1) + "'"
+			} else {
+				result += ",'" + strings.Replace(v, "'", "\\'", -1) + "'"
+			}
+		}
 		return result
 	}
 
@@ -223,6 +404,22 @@ func (this *Mysqlcon) Delete() (sql.Result, error) {
 	result, err := mysqldb.Exec(sqltext)
 	return result, err
 }
+
+func(this *Mysqlcon) SetDec(fdname string,quantity int)(sql.Result,error){
+	sqltext := fmt.Sprintf("update %v set %v=%v-%v where %v", this.Tablename, fdname,fdname,quantity,this.Sql_where)
+	this.LastSqltext = sqltext
+	result, err := mysqldb.Exec(sqltext)
+	return result, err
+}
+
+func(this *Mysqlcon) SetInc(fdname string,quantity int)(sql.Result,error){
+	sqltext := fmt.Sprintf("update %v set %v=%v+%v where %v", this.Tablename, fdname,fdname,quantity,this.Sql_where)
+	this.LastSqltext = sqltext
+	result, err := mysqldb.Exec(sqltext)
+	return result, err
+}
+
+
 func (this *Mysqlcon) Update(postdata map[string]interface{}) (sql.Result, error) {
 	sqltext := this.get_update_sql(postdata)
 	sqltext = fmt.Sprintf("update %v set %v where %v", this.Tablename, sqltext, this.Sql_where)
@@ -252,7 +449,10 @@ func (this *Mysqlcon) Get_Update(postdata map[string]interface{}) (string) {
 
 func (this *Mysqlcon) Query(sqltext string) []map[string]string {
 	this.LastSqltext = sqltext
-	rows, _ := mysqldb.Query(sqltext)
+	rows, err := mysqldb.Query(sqltext)
+	if(err!=nil){
+		return nil
+	}
 	defer rows.Close()
 	//字典类型
 	//构造scanArgs、values两个数组，scanArgs的每个值指向values相应值的地址
@@ -393,6 +593,18 @@ func (this *Mysqlcon) Count() int64 {
 	return record
 }
 
+func (this *Mysqlcon) Sum(fd string) (float64) {
+	var result float64
+	sqltext := this.set_sql(1)
+	sqltext = strings.Replace(sqltext, "count(*)", "sum("+fd+")", -1)
+	if this.Sql_where != "" {
+		sqltext += " where " + this.Sql_where
+	}
+	rows := mysqldb.QueryRow(sqltext)
+	rows.Scan(&result)
+	return result
+}
+
 func (this *Mysqlcon) Select() []map[string]string {
 	sqltext := this.set_sql(0)
 	if this.Sql_where != "" {
@@ -493,28 +705,87 @@ func (this *Mysqlcon) Get_where_data(postdata map[string]interface{}) string {
 }
 
 func (this *Mysqlcon) Get_new_add() map[string]string {
-	rows, _ := mysqldb.Query("SHOW full COLUMNS FROM " + this.Tablename)
-	defer rows.Close()
-	columns, _ := rows.Columns()
-	scanArgs := make([]interface{}, len(columns))
-	values := make([]interface{}, len(columns))
-	result := make(map[string]string)
-	for i := range values {
-		scanArgs[i] = &values[i]
+
+	fd_list,ok := G_dbtables[this.Tablename]
+	if (ok) {
+		//fmt.Println(fd_list)
+		result := make(map[string]string)
+		for _, v := range fd_list.([]map[string]string) {
+			fd_name:=v["field"]
+			result[fd_name] = ""
+		}
+		return result
+	} else {
+		this.Update_redis(this.Tablename)
+		rows, _ := mysqldb.Query("SHOW full COLUMNS FROM " + this.Tablename)
+		defer rows.Close()
+		columns, _ := rows.Columns()
+		scanArgs := make([]interface{}, len(columns))
+		values := make([]interface{}, len(columns))
+		result := make(map[string]string)
+		for i := range values {
+			scanArgs[i] = &values[i]
+		}
+		for rows.Next() {
+			//将行数据保存到record字典
+			record := make(map[string]string)
+			_ = rows.Scan(scanArgs...)
+			for i, col := range values {
+				if col != nil {
+					record[strings.ToLower(columns[i])] = string(col.([]byte))
+					result[record["field"]] = ""
+				}
+			}
+		}
+
+		return result
 	}
-	for rows.Next() {
-		//将行数据保存到record字典
-		record := make(map[string]string)
-		_ = rows.Scan(scanArgs...)
-		for i, col := range values {
-			if col != nil {
-				record[strings.ToLower(columns[i])] = string(col.([]byte))
-				result[record["field"]] = ""
+}
+
+func (this *Mysqlcon) Update_redis(tbname string) {
+	list := this.Query("SHOW full COLUMNS FROM "+tbname)
+	if (list != nil) {
+		data_list := make([]map[string]string, 0)
+		for _, val := range list {
+			col := make(map[string]string)
+			for key, _ := range val {
+				col[common.Tolow_map_name(key)] = val[key]
+			}
+			data_list = append(data_list, col)
+		}
+		G_dbtables[tbname] = data_list
+	}
+}
+
+func (this *Mysqlcon) Get_select_data(d_data map[string]string,masterdb string) (map[string]string) {
+	data,ok := G_fd_list[masterdb]
+	if (ok) {
+		for _, v := range data.([]map[string]string) {
+			listname := strings.Replace(v["list_tb_name"], this.Db_perfix, "", -1)
+			tbname := strings.Replace(v["list_tb_name"], this.Db_perfix, "", -1)
+			listname = strings.Replace(listname, "_", "", -1)
+			this.Dbinit()
+			where := v["list_where"]
+			list_val := v["list_val"]
+			list_display := datatype.Type2str(v["list_display"])
+			if (where != "") {
+				where += " and " + this.Tbname(tbname).Get_fields_sql(list_val, d_data[v["name"]])
+			} else {
+				where = this.Tbname(tbname).Get_fields_sql(list_val, d_data[v["name"]])
+			}
+			this.Dbinit()
+			list_data := this.Tbname(tbname).Where(where).Find()
+			//fmt.Println(v,this.GetLastSql())
+			//fmt.Println(list_data)
+			if (list_data != nil) {
+				d_data[v["name"]+"_name"] = list_data[list_display]
+			} else {
+				d_data[v["name"]+"_name"] = ""
 			}
 		}
 	}
-
-	return result
+	//fmt.Println(d_data)
+	return d_data
 }
 
 //func (this *Mysqlcon)Table_json(){
@@ -547,3 +818,5 @@ func (this *Mysqlcon) Get_new_add() map[string]string {
 //	}
 //	return result
 //}
+
+

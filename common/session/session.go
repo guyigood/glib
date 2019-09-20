@@ -185,7 +185,8 @@ func Open(w http.ResponseWriter, r *http.Request) (*Session, error) {
 
 func generateSessionID() string {
 	uuid, _ := uuid.NewV4()
-	return "ses_"+uuid.String()
+	u_str:="ses_"+uuid.String()+common.GetRangStr(999999)
+	return u_str
 }
 
 //func generateSessionID() string {

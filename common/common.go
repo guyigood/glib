@@ -25,6 +25,8 @@ import (
 	"regexp"
 	"bufio"
 	"runtime"
+	"gylib/common/imgresize"
+	"github.com/skip2/go-qrcode"
 )
 
 func Getini(config_file, action string, post_data map[string]string) (map[string]string) {
@@ -42,6 +44,17 @@ func Getini(config_file, action string, post_data map[string]string) (map[string
 	return (data)
 }
 
+//检查是否在数组内
+func Check_array_in(val string, data []string) bool {
+	result := false
+	for _, v := range data {
+		if (v == val) {
+			result = true
+			break
+		}
+	}
+	return result
+}
 
 func Send_mail_public(title, mailto, mailbody string) (int) {
 	data := Getini("conf/app.ini", "smtp", map[string]string{"smtp_user": "", "smtp_pass": "", "smtp_host": ""})
@@ -280,8 +293,12 @@ func Map2str(postdata map[string]interface{}) (map[string]string) {
 }
 
 func Get_UUID() (string) {
-	uuid, _ := uuid.NewV4()
-	return uuid.String()
+	uuid_str := uuid.Must(uuid.NewV4())
+	//uuid, _ := uuid.NewV4()
+	u_str := uuid_str.String()
+	time_str := fmt.Sprintf("%v", time.Now().Unix())
+	u_str += "-" + time_str + "-" + GetRangStr(999999)
+	return u_str
 
 }
 
@@ -328,12 +345,12 @@ func Int2Date_str(date int64) (string) {
 
 }
 
-func MapString2interface(data map[string]string)map[string]interface{}{
-	result:=make(map[string]interface{})
-	for key,val:=range data{
-		result[key]=val
-    }
-    return result
+func MapString2interface(data map[string]string) map[string]interface{} {
+	result := make(map[string]interface{})
+	for key, val := range data {
+		result[key] = val
+	}
+	return result
 }
 
 /*Base64图片编码写入文件*/
@@ -356,6 +373,12 @@ func Base64ToImg(datasource string, dirpath string) (string) {
 	return dirpath[1:]
 }
 
+func GetRangStr(fw int) (string) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	code := strconv.Itoa(r.Intn(fw))
+	return code
+}
+
 func PathExists(dirpath string) (bool) {
 	_, err := os.Stat(dirpath)
 	if err == nil {
@@ -365,6 +388,34 @@ func PathExists(dirpath string) (bool) {
 		return false
 	}
 	return false
+}
+
+func Upload_web_file(r *http.Request) ([]string) {
+	result := make([]string, 0)
+	for key, _ := range r.MultipartForm.File {
+		fhs := r.MultipartForm.File[key]
+		for i := 0; i < len(fhs); i++ {
+			file, err := fhs[i].Open()
+			if err != nil {
+				continue
+			}
+			filename := Get_Upload_filename(fhs[i].Filename, "")
+			f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
+			if err != nil {
+				fmt.Println(err)
+				return nil
+			}
+			defer f.Close()
+			io.Copy(f, file)
+			go imgresize.Img_resize(filename)
+			result = append(result, filename[1:])
+		}
+	}
+	return result
+}
+
+func ImageResetSize(filename string){
+	imgresize.Img_resize(filename)
 }
 
 func Get_Upload_filename(filestr, dirstr string) (string) {
@@ -407,9 +458,8 @@ func Upload_File(r *http.Request, uploadfile string) ([]string) {
 	return result
 }
 
-
 func Int64toint(val int64) int {
-	result := strconv.FormatInt(val,10)
+	result := strconv.FormatInt(val, 10)
 	data, err1 := strconv.Atoi(result)
 	if (err1 != nil) {
 		return -1
@@ -469,7 +519,7 @@ func ConvertNumToCny(num float64) string {
 	strnum := strconv.FormatFloat(num*100, 'f', 0, 64)
 	sliceUnit := []string{"仟", "佰", "拾", "亿", "仟", "佰", "拾", "万", "仟", "佰", "拾", "元", "角", "分"}
 	// log.Println(sliceUnit[:len(sliceUnit)-2])
-	s := sliceUnit[len(sliceUnit)-len(strnum) : len(sliceUnit)]
+	s := sliceUnit[len(sliceUnit)-len(strnum): len(sliceUnit)]
 	upperDigitUnit := map[string]string{"0": "零", "1": "壹", "2": "贰", "3": "叁", "4": "肆", "5": "伍", "6": "陆", "7": "柒", "8": "捌", "9": "玖"}
 	str := ""
 	for k, v := range strnum[:] {
@@ -508,4 +558,82 @@ func ConvertNumToCny(num float64) string {
 		fmt.Print(err)
 	}
 	return str
+}
+
+//获取单个文件的大小
+func Get_FIle_Size(path string) int64 {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	fileSize := fileInfo.Size() //获取size
+	//fmt.Println(path+” 的大小为”, fileSize, “byte”)
+	return fileSize
+}
+
+// map转xml
+func Map2Xml(params map[string]string) string {
+	xmlString := "<xml>"
+
+	for k, v := range params {
+		xmlString += fmt.Sprintf("<%s>%s</%s>", k, v, k)
+	}
+	xmlString += "</xml>"
+	return xmlString
+}
+
+// xml转map
+func Xml2Map(in interface{}) (map[string]string, error) {
+	xmlMap := make(map[string]string)
+
+	v := reflect.ValueOf(in)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+
+	if v.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("xml2Map only accepts structs; got %T", v)
+	}
+
+	typ := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		fi := typ.Field(i)
+		tagv := fi.Tag.Get("xml")
+
+		if strings.Contains(tagv, ",") {
+			tagvs := strings.Split(tagv, ",")
+
+			switch tagvs[1] {
+			case "innerXml":
+				innerXmlMap, err := Xml2Map(v.Field(i).Interface())
+				if err != nil {
+					return nil, err
+				}
+				for k, v := range innerXmlMap {
+					if _, ok := xmlMap[k]; !ok {
+						xmlMap[k] = v
+					}
+				}
+			}
+		} else if tagv != "" && tagv != "xml" {
+			xmlMap[tagv] = v.Field(i).String()
+		}
+	}
+	return xmlMap, nil
+}
+
+func Build_QRFile(qurl string,dirstr string) (string) {
+	dirpath:=dirstr
+	if(dirpath=="") {
+		dirpath = "./static/uploads/"
+	}
+	dirpath += Int2Date_str(time.Now().Unix()) + "/"
+	if (!PathExists(dirpath)) {
+		os.Mkdir(dirpath, os.ModePerm)
+	}
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	dirpath += strconv.Itoa(r.Intn(99999))
+	dirpath += strconv.FormatInt(time.Now().Unix(), 10) + ".png"
+	qrcode.WriteFile(qurl, qrcode.Medium, 256, dirpath)
+	return dirpath[1:]
 }

@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-func Export_Excel(filename string,title_data []string,data []map[string]interface{})bool{
+func Export_Excel(filename string,title_data []string,data []map[string]interface{},title []string)bool{
 	xlsx := excelize.NewFile()
 	// Create a new sheet.
 	xlsx.NewSheet( "Sheet1")
@@ -17,10 +17,12 @@ func Export_Excel(filename string,title_data []string,data []map[string]interfac
 		cols_row++
 	}
 	i:=2
+	//var title =[]string{"bh","zh_name","duty_no","address","bank_no","skr","shr","kpr","memo","spname","ggxh","jldw","quantity","price","ws_price","sl","ssbm","is_kp"}
 	for _,val_data:=range data{
 		cols_row=65
- 		for _,val1:=range val_data{
-			xlsx.SetCellValue("Sheet1", string(rune(cols_row))+strconv.Itoa(i), val1)
+		for j:=0;j<len(title);j++{
+			//fmt.Println(title[j],val_data[title[j]])
+			xlsx.SetCellValue("Sheet1", string(rune(cols_row))+strconv.Itoa(i), val_data[title[j]])
 			cols_row++
 		}
 		i++
@@ -35,4 +37,25 @@ func Export_Excel(filename string,title_data []string,data []map[string]interfac
 
 	}
 	return true
+}
+
+
+
+func Import_Excel(filename string){
+	xlsx, err := excelize.OpenFile(filename)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	// Get value from cell by given worksheet name and axis.
+	cell := xlsx.GetCellValue("Sheet1", "B2")
+	fmt.Println(cell)
+	// Get all the rows in the Sheet1.
+	rows := xlsx.GetRows("Sheet1")
+	for _, row := range rows {
+		for _, colCell := range row {
+			fmt.Print(colCell, "\t")
+		}
+		fmt.Println()
+	}
 }
